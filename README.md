@@ -1,588 +1,286 @@
-# 🚀 MT5 Middleware Production Deployment Guide
+# MT5 Multi-Account Middleware (Complete Guide)
 
-Complete step-by-step guide to deploy your MT5 Multi-Account Middleware to production using **Cloudflare Tunnel** with a real domain.
+This project transforms **your computer into a server** that can:
+* Receive **Webhooks from TradingView (or other sources)**
+* Manage **multiple MT5 accounts simultaneously** (Multi-Instance)
+* Provide a **Web UI** for adding/deleting/restarting/stopping accounts with real-time status monitoring
+* Secure with **Basic Auth + Webhook Token + Rate-limiting + Cloudflare Tunnel**
+* Send **Email Alerts** (Online/Offline/Error/Unauthorized)
+* Include **Log Viewer** and **Health Check Endpoint** (compatible with UptimeRobot)
 
-## ✨ Overview
+## ✨ Key Features
 
-Transform your local MT5 middleware into a production-ready system accessible via your own domain, secured with Cloudflare's enterprise-grade protection.
+### **Multi-Account MT5**
+- Creates separate portable instances per account
+- Uses Default Profile with pre-configured EA
+- Control buttons: Open / Restart / Stop / Delete
 
-**What you'll achieve:**
-- 🌐 **Public Access** via your domain (e.g., `webhook.yourdomain.com`)
-- 🔒 **Enterprise Security** with Cloudflare WAF, DDoS protection, SSL
-- 📊 **Production Monitoring** with health checks and uptime tracking
-- 🚀 **Zero Server Costs** - runs from your local machine through secure tunnel
+### **Webhook Receiver**
+- Endpoint: `/webhook/<TOKEN>`
+- Supports Actions: `BUY, SELL, BUY_LIMIT, SELL_LIMIT, BUY_STOP, SELL_STOP, LONG, SHORT`
+- Auto-Symbol Mapping with fuzzy matching (60-70% accuracy)
+- Writes signals as JSON to `MQL5/Files/signals/*.json` (for EA consumption)
 
-## 🔹 Step 1: Prepare Your Local System
+### **Security**
+- Basic Authentication for UI access
+- Idle timeout (e.g., 15 minutes inactivity → re-login required)
+- Webhook token validation + rate limiting
+- Cloudflare Firewall integration (recommended)
 
-### 1.1 Verify Local Environment
+### **Monitoring**
+- Email alerts when accounts go Online/Offline
+- Email notifications for Unauthorized access / Payload errors / Signal write errors
+- `/health` endpoint for UptimeRobot monitoring
+
+### **UI Features**
+- Add Account (enter account number + nickname)
+- Accounts Table: Real-time Online/Offline status, PID display, action buttons
+- Webhook URL display with copy button
+- Log Viewer (Webhook logs, Error logs, Email logs)
+
+## ⚙️ Installation (Step by Step)
+
+### 1) Prepare Your System
+- Windows or Linux with MetaTrader 5 installed
+- Python 3.10+
+- Install Cloudflared
+
+### 2) Install Project
+
 ```bash
-# Activate environment and start Flask
+git clone <repository-url>
+cd 4609
+python -m venv venv
+# On Windows:
 venv\Scripts\activate
+# On Linux:
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+### 3) Configure Environment Variables
+
+Copy the example file:
+```bash
+# Windows
+copy .env.example .env
+# Linux
+cp .env.example .env
+```
+
+Edit `.env` with your settings:
+
+```env
+# Basic Authentication
+BASIC_USER=admin
+BASIC_PASS=yourpassword
+
+# Webhook Security
+WEBHOOK_TOKEN=your-long-random-token-here
+EXTERNAL_BASE_URL=https://webhook.yourdomain.com
+
+# MT5 Configuration
+MT5_MAIN_PATH=C:\Program Files\MetaTrader 5\terminal64.exe
+MT5_INSTANCES_DIR=C:\MT5\instances
+MT5_PROFILE_SOURCE=C:\Users\YOUR_USERNAME\AppData\Roaming\MetaQuotes\Terminal\<TERMINAL_ID>
+
+# Email Configuration (SMTP)
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your-email@gmail.com
+SMTP_PASS=your-app-password
+SMTP_FROM=alerts@yourdomain.com
+SMTP_TO=recipient@gmail.com
+
+# Optional: Rate Limiting
+RATE_LIMIT_PER_MINUTE=60
+IDLE_TIMEOUT_MINUTES=15
+```
+
+## ▶️ Local Usage
+
+### 1. Start the Server:
+```bash
 python server.py
 ```
-✅ Server should start at `http://127.0.0.1:5000`
 
-### 1.2 Test Core Functionality
-Before going public, ensure everything works locally:
+### 2. Access Web Interface:
+- Open browser to: `http://127.0.0.1:5000`
+- Login with your `BASIC_USER` / `BASIC_PASS`
+- Click **Add Account** → System creates portable MT5 instance and launches MT5 automatically
 
-- ✅ **Basic Auth** login at http://127.0.0.1:5000
-- ✅ **Add Account** creates MT5 instance and launches terminal
-- ✅ **Webhook Token** validation works
-- ✅ **Test webhook** with curl:
+## 🌍 Production Deployment (via Cloudflare Tunnel)
 
-```bash
-curl -X POST http://127.0.0.1:5000/webhook/YOUR_TOKEN \
-  -H "Content-Type: application/json" \
-  -d '{
-    "action": "BUY",
-    "symbol": "EURUSD", 
-    "volume": 0.1,
-    "type": "MARKET"
-  }'
-```
-
-Expected response: `{"status": "success", "message": "Signal processed"}`
-
-## 🔹 Step 2: Install & Setup Cloudflared
-
-### 2.1 Download Cloudflared
-
-**Windows:**
-1. Download `cloudflared.exe` from [GitHub Releases](https://github.com/cloudflare/cloudflared/releases)
-2. Place in folder and add to PATH, or use directly
-3. Verify: `cloudflared --version`
-
-**Linux:**
-```bash
-# Ubuntu/Debian
-wget https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
-sudo dpkg -i cloudflared-linux-amd64.deb
-
-# Or via apt
-sudo apt update && sudo apt install cloudflared
-```
-
-### 2.2 Authenticate with Cloudflare
+### 1. **Login to Cloudflare**
 ```bash
 cloudflared tunnel login
 ```
-- Browser opens → Select your domain from Cloudflare account
-- Authorization file saved to `~/.cloudflared/cert.pem`
 
-## 🔹 Step 3: Create Production Tunnel
-
-### 3.1 Create Named Tunnel
+### 2. **Create Tunnel**
 ```bash
-cloudflared tunnel create mt5-production
+cloudflared tunnel create mt5-tunnel
 ```
-📝 **Save the UUID** returned (e.g., `12345678-1234-1234-1234-123456789abc`)
 
-### 3.2 Create Configuration File
-
-**Windows:** `C:\Users\{USERNAME}\.cloudflared\config.yml`  
-**Linux:** `~/.cloudflared/config.yml`
-
+### 3. **Create config.yml**
 ```yaml
-tunnel: 12345678-1234-1234-1234-123456789abc
-credentials-file: /path/to/.cloudflared/12345678-1234-1234-1234-123456789abc.json
+tunnel: <YOUR_TUNNEL_UUID>
+credentials-file: C:\Users\YOUR_USERNAME\.cloudflared\<UUID>.json
 
 ingress:
-  # Main webhook domain
   - hostname: webhook.yourdomain.com
     service: http://127.0.0.1:5000
-    originRequest:
-      httpHostHeader: localhost
-      
-  # Optional: Separate admin subdomain for security
-  - hostname: mt5-admin.yourdomain.com
-    service: http://127.0.0.1:5000
-    originRequest:
-      httpHostHeader: localhost
-      
-  # Health monitoring endpoint
-  - hostname: mt5-health.yourdomain.com
-    service: http://127.0.0.1:5000
-    originRequest:
-      httpHostHeader: localhost
-      
-  # Catch-all fallback
   - service: http_status:404
-
-# Production logging
-logDirectory: ./logs
-loglevel: info
-metrics: 127.0.0.1:8081
 ```
 
-### 3.3 Setup DNS Records
+### 4. **Configure DNS**
 ```bash
-# Create DNS routes for your subdomains
-cloudflared tunnel route dns mt5-production webhook.yourdomain.com
-cloudflared tunnel route dns mt5-production mt5-admin.yourdomain.com  
-cloudflared tunnel route dns mt5-production mt5-health.yourdomain.com
+cloudflared tunnel route dns mt5-tunnel webhook.yourdomain.com
 ```
 
-### 3.4 Verify DNS Propagation
+### 5. **Run Tunnel**
 ```bash
-# Wait 1-2 minutes then check
-nslookup webhook.yourdomain.com
-# Should show Cloudflare IPs
+cloudflared tunnel run mt5-tunnel
 ```
 
-## 🔹 Step 4: Configure Cloudflare Security
+## 📡 TradingView Configuration
 
-### 4.1 SSL/TLS Settings (Cloudflare Dashboard)
-Navigate to **SSL/TLS > Overview**:
-- **SSL/TLS Mode:** Full (Strict) 
-- **Always Use HTTPS:** On
-- **HSTS:** Enable with 6 months max-age
-- **TLS Version:** 1.2 minimum
-
-### 4.2 Firewall Rules (Security > WAF)
-
-**Rule 1: Protect Admin Interface**
+### Webhook URL:
 ```
-Rule Name: Block Admin Access
-Field: Hostname
-Operator: equals  
-Value: mt5-admin.yourdomain.com
-Action: Block
-```
-Add exception for your IP: **IP Source Address** equals `YOUR_STATIC_IP`
-
-**Rule 2: Webhook Rate Limiting**
-```
-Rule Name: Webhook Rate Limit
-Field: URI Path
-Operator: starts with
-Value: /webhook/
-Action: Rate Limit
-Rate: 10 requests per minute per IP
+https://webhook.yourdomain.com/webhook/<YOUR_WEBHOOK_TOKEN>
 ```
 
-**Rule 3: Block Invalid Webhook Tokens**
-```
-Rule Name: Invalid Webhook Tokens
-Field: URI Path  
-Operator: matches regex
-Value: ^/webhook/(?!YOUR_ACTUAL_TOKEN$)[^/]*/?$
-Action: Block
-Response: 404 (hide endpoint existence)
-```
-
-### 4.3 Bot Protection
-- **Bot Fight Mode:** On
-- **Super Bot Fight Mode:** On (if Pro+ plan)
-- **Challenge Passage:** 30 minutes
-
-### 4.4 Access Rules (Optional)
-Block entire countries or allow only specific regions based on your trading requirements.
-
-## 🔹 Step 5: Update Application for Production
-
-### 5.1 Update .env Configuration
-```env
-# Production Environment
-ENVIRONMENT=production
-EXTERNAL_BASE_URL=https://webhook.yourdomain.com
-
-# Enhanced Security
-SESSION_TIMEOUT=900  # 15 minutes
-FORCE_HTTPS=true
-WEBHOOK_RATE_LIMIT=50  # per minute
-
-# Production Logging
-LOG_LEVEL=INFO
-LOG_TO_FILE=true
-LOG_MAX_SIZE=10485760  # 10MB
-LOG_BACKUP_COUNT=5
-
-# Email Alerts (Highly Recommended)
-ENABLE_EMAIL_ALERTS=true
-SMTP_SERVER=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USERNAME=alerts@yourdomain.com
-SMTP_PASSWORD=your-app-password
-ALERT_EMAIL=admin@yourdomain.com
-
-# Alert Settings
-ALERT_ON_UNAUTHORIZED_ACCESS=true
-ALERT_ON_SYSTEM_ERRORS=true
-ALERT_ON_ACCOUNT_STATUS_CHANGE=true
-
-# Health Check Settings
-HEALTH_CHECK_INTERVAL=60  # seconds
-HEALTH_CHECK_TIMEOUT=10   # seconds
-```
-
-### 5.2 Add Production Enhancements to server.py
-
-Add these imports and configurations to your Flask app:
-
-```python
-import os
-from werkzeug.middleware.proxy_fix import ProxyFix
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
-
-# Configure for production behind Cloudflare
-if os.getenv('ENVIRONMENT') == 'production':
-    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
-
-# Rate limiting
-limiter = Limiter(
-    app,
-    key_func=get_remote_address,
-    default_limits=["1000 per day", "100 per hour"]
-)
-
-# Force HTTPS in production
-@app.before_request
-def force_https():
-    if os.getenv('FORCE_HTTPS') == 'true':
-        if not request.is_secure and request.headers.get('X-Forwarded-Proto') != 'https':
-            return redirect(request.url.replace('http://', 'https://'))
-
-# Enhanced webhook rate limiting
-@app.route('/webhook/<token>', methods=['POST'])
-@limiter.limit("30 per minute")
-def webhook_endpoint(token):
-    # Your existing webhook logic
-    pass
-
-# Production health check with more details
-@app.route('/health')
-def health_check():
-    return jsonify({
-        "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
-        "version": "1.0.0",
-        "environment": os.getenv('ENVIRONMENT', 'development'),
-        "uptime": time.time() - start_time
-    })
-```
-
-## 🔹 Step 6: Launch Production System
-
-### 6.1 Start Flask Application
-```bash
-# Production mode with optimizations
-venv\Scripts\activate
-
-# Set production environment
-set ENVIRONMENT=production  # Windows
-export ENVIRONMENT=production  # Linux
-
-# Start with production settings
-python server.py
-```
-
-### 6.2 Start Cloudflared Tunnel
-
-**Option A: Manual Start (for testing)**
-```bash
-cloudflared tunnel run mt5-production
-```
-
-**Option B: Windows Service (Recommended)**
-```cmd
-# Install as Windows service
-cloudflared service install
-
-# Start service
-sc start cloudflared
-
-# Set to auto-start
-sc config cloudflared start= auto
-```
-
-**Option C: Linux Systemd Service (Recommended)**
-```bash
-# Install systemd service
-sudo cloudflared service install
-
-# Start and enable
-sudo systemctl start cloudflared
-sudo systemctl enable cloudflared
-
-# Check status
-sudo systemctl status cloudflared
-```
-
-### 6.3 Verify Production Deployment
-
-**Test Public Access:**
-```bash
-# Health check
-curl https://webhook.yourdomain.com/health
-
-# Should return JSON with status: healthy
-```
-
-**Test Security:**
-```bash
-# Invalid token should be blocked
-curl -X POST https://webhook.yourdomain.com/webhook/INVALID_TOKEN
-
-# Valid token should work
-curl -X POST https://webhook.yourdomain.com/webhook/YOUR_REAL_TOKEN \
-  -H "Content-Type: application/json" \
-  -d '{"action":"BUY","symbol":"EURUSD","volume":0.01,"type":"MARKET"}'
-```
-
-**Test Admin Interface:**
-- Navigate to `https://mt5-admin.yourdomain.com`
-- Should be blocked unless accessing from your whitelisted IP
-- Login with Basic Auth credentials when allowed
-
-## 🔹 Step 7: TradingView Integration
-
-### 7.1 Configure TradingView Alerts
-
-**Webhook URL:** `https://webhook.yourdomain.com/webhook/YOUR_TOKEN`
-
-**Message Templates:**
-
-**Basic Market Order:**
+### Example JSON Payload:
 ```json
 {
-  "action": "{{strategy.order.action}}",
-  "symbol": "{{ticker}}",
-  "type": "MARKET",
-  "volume": 0.1
-}
-```
-
-**Advanced with SL/TP:**
-```json
-{
-  "action": "{{strategy.order.action}}",
-  "symbol": "{{ticker}}",
-  "type": "MARKET", 
-  "volume": {{strategy.position_size}},
-  "stop_loss": {{strategy.order.sl}},
-  "take_profit": {{strategy.order.tp}},
-  "account": "123456789"
-}
-```
-
-**Limit/Stop Orders:**
-```json
-{
+  "account_number": "123456",
+  "symbol": "XAUUSDm",
   "action": "BUY",
-  "symbol": "{{ticker}}",
-  "type": "LIMIT",
-  "price": {{close}},
   "volume": 0.1,
-  "expiry": "GTC"
+  "take_profit": 2000.0,
+  "stop_loss": 1995.0
 }
 ```
 
-### 7.2 Testing TradingView Integration
+The system will auto-map `"XAUUSDm"` → `"XAUUSD"` (fuzzy matching) and create JSON signal files for EA consumption.
 
-1. **Create Test Alert** in TradingView
-2. **Use Webhook URL** with your production domain
-3. **Trigger Alert** manually to test
-4. **Check Logs** in your web UI for successful signal processing
-5. **Verify Trade** executed in MT5 terminal
+## 📋 Supported Actions
 
-## 🔹 Step 8: Monitoring & Maintenance
+| Action | Description |
+|--------|-------------|
+| `BUY` | Market buy order |
+| `SELL` | Market sell order |
+| `BUY_LIMIT` | Buy limit order |
+| `SELL_LIMIT` | Sell limit order |
+| `BUY_STOP` | Buy stop order |
+| `SELL_STOP` | Sell stop order |
+| `LONG` | Alias for BUY |
+| `SHORT` | Alias for SELL |
 
-### 8.1 Setup Uptime Monitoring
+## 🔐 Security Features
 
-**UptimeRobot Setup:**
-- Monitor URL: `https://webhook.yourdomain.com/health`
-- Check interval: 1 minute
-- Alert contacts: Your email/SMS
+- **Basic Authentication**: Protects web interface access
+- **Webhook Token Validation**: Prevents unauthorized signal submission
+- **Rate Limiting**: Configurable requests per minute limit
+- **Idle Timeout**: Automatic session expiration
+- **Cloudflare Integration**: Additional DDoS protection and firewall rules
 
-**Pingdom/StatusCake Alternative:**
-- HTTP(S) monitoring on health endpoint
-- Response time alerts
-- Multi-location checks
+## 📊 Monitoring & Alerts
 
-### 8.2 Log Monitoring
+### Email Notifications:
+- Account status changes (Online → Offline, Offline → Online)
+- Unauthorized webhook attempts
+- Payload validation errors
+- Signal file write errors
 
-**Key Logs to Watch:**
-```bash
-# Webhook activity
-tail -f logs/webhook.log
+### Health Check Endpoint:
+- Access: `GET /health`
+- Returns JSON with system status
+- Compatible with UptimeRobot and other monitoring services
 
-# System errors  
-tail -f logs/error.log
+### Log Viewer:
+- Webhook activity logs
+- Error logs with timestamps
+- Email delivery logs
+- Real-time log streaming in web interface
 
-# Email notifications
-tail -f logs/email.log
+## 🛠 Troubleshooting
 
-# Cloudflared tunnel
-tail -f logs/cloudflared.log
+### **MT5 Shows "Open Account Wizard"**
+- Verify `MT5_PROFILE_SOURCE` path is correct
+- Ensure the profile contains `config/servers.dat` file
+- Check that the source profile has been used with MT5 at least once
+
+### **Webhook Returns "Unauthorized"**
+- Verify the token in webhook URL matches `WEBHOOK_TOKEN` in `.env`
+- Check for trailing spaces or hidden characters in token
+
+### **EA Not Executing Trades**
+- Confirm signal files are written to correct `MQL5/Files/signals/` directory of the instance
+- Verify EA is installed and configured to read signal files
+- Check EA logs in MT5 for any errors
+
+### **Email Alerts Not Sending**
+- Verify SMTP configuration in `.env`
+- For Gmail: Use App Password instead of regular password
+- Check firewall settings for SMTP port (usually 587 or 465)
+
+### **Instance Creation Fails**
+- Ensure `MT5_INSTANCES_DIR` exists and is writable
+- Verify `MT5_MAIN_PATH` points to correct MT5 executable
+- Check Windows permissions for directory access
+
+## 🔧 Configuration Options
+
+### Environment Variables Reference:
+
+| Variable | Description | Required | Example |
+|----------|-------------|----------|---------|
+| `BASIC_USER` | Web interface username | Yes | `admin` |
+| `BASIC_PASS` | Web interface password | Yes | `securepassword123` |
+| `WEBHOOK_TOKEN` | Webhook security token | Yes | `abc123xyz789` |
+| `EXTERNAL_BASE_URL` | Public webhook URL | Yes | `https://webhook.example.com` |
+| `MT5_MAIN_PATH` | MT5 executable path | Yes | `C:\Program Files\MetaTrader 5\terminal64.exe` |
+| `MT5_INSTANCES_DIR` | Instances storage directory | Yes | `C:\MT5\instances` |
+| `MT5_PROFILE_SOURCE` | Source profile directory | Yes | `C:\Users\User\AppData\Roaming\MetaQuotes\Terminal\ABC123` |
+| `SMTP_HOST` | Email server hostname | No | `smtp.gmail.com` |
+| `SMTP_PORT` | Email server port | No | `587` |
+| `SMTP_USER` | Email username | No | `user@gmail.com` |
+| `SMTP_PASS` | Email password | No | `apppassword123` |
+| `RATE_LIMIT_PER_MINUTE` | Webhook rate limit | No | `60` |
+| `IDLE_TIMEOUT_MINUTES` | Session timeout | No | `15` |
+
+## 📁 Directory Structure
+
+```
+mt5-middleware-complete/
+├── server.py              # Main application
+├── requirements.txt       # Python dependencies
+├── .env.example          # Environment template
+├── .env                  # Your configuration (create this)
+├── static/               # Web UI assets
+├── templates/            # HTML templates
+├── logs/                 # Application logs
+└── README.md            # This file
 ```
 
-**Log Rotation Setup:**
-```python
-# In server.py - add log rotation
-import logging.handlers
+## 🚀 Quick Start (TL;DR)
 
-handler = logging.handlers.RotatingFileHandler(
-    'logs/app.log', maxBytes=10485760, backupCount=5
-)
-```
+1. Install Python 3.10+, Cloudflared, MT5
+2. Clone repo and run: `pip install -r requirements.txt`
+3. Copy `.env.example` to `.env` and configure MT5 paths, SMTP, tokens
+4. Run: `python server.py` → Access web interface, Add Account → MT5 launches automatically
+5. Setup Cloudflare Tunnel → Use real domain for TradingView webhooks
+6. Configure TradingView webhook with your domain and token
+7. Monitor via web interface and email alerts
 
-### 8.3 Regular Maintenance Tasks
+## 📞 Support
 
-**Daily:**
-- ✅ Check health endpoint status
-- ✅ Review error logs for issues
-- ✅ Verify MT5 instances are running
-
-**Weekly:**
-- ✅ Test webhook functionality end-to-end
-- ✅ Review Cloudflare analytics
-- ✅ Check disk space usage
-- ✅ Backup configuration files
-
-**Monthly:**
-- ✅ Update dependencies (`pip list --outdated`)
-- ✅ Review and rotate logs
-- ✅ Test disaster recovery procedures
-- ✅ Audit security settings
-
-## 🔒 Security Best Practices
-
-### 8.1 Token Management
-- **Rotate webhook tokens** monthly
-- **Use strong tokens** (32+ characters, alphanumeric + symbols)
-- **Never log tokens** in plaintext
-- **Separate tokens** for different signal sources
-
-### 8.2 Access Control
-- **Whitelist your IP** for admin access
-- **Use VPN** when accessing from different locations
-- **Enable 2FA** on your Cloudflare account
-- **Regular password updates** for Basic Auth
-
-### 8.3 Network Security
-- **Keep Flask internal** (only accessible via tunnel)
-- **Block direct IP access** in firewall
-- **Monitor unusual traffic** in Cloudflare Analytics
-- **Set up fail2ban** for repeated failed attempts
-
-## 🚨 Troubleshooting Guide
-
-### Common Issues & Solutions
-
-**Tunnel Won't Connect:**
-```bash
-# Check tunnel status
-cloudflared tunnel info mt5-production
-
-# Verify config syntax  
-cloudflared tunnel ingress validate
-
-# Test local connection
-cloudflared tunnel run --config /path/to/config.yml mt5-production
-```
-
-**Webhook Returns 502:**
-- ✅ Flask server running on correct port
-- ✅ No firewall blocking localhost:5000
-- ✅ Config.yml service URL matches Flask port
-
-**Basic Auth Not Working:**
-- ✅ Check credentials in .env
-- ✅ Session timeout not expired
-- ✅ Clear browser cookies
-- ✅ Verify ProxyFix configuration
-
-**MT5 Instances Not Starting:**
-- ✅ Check MT5_EXECUTABLE path
-- ✅ Verify source profile exists
-- ✅ Windows permissions for MT5 directory
-- ✅ Antivirus not blocking terminal64.exe
-
-**Signals Not Processing:**
-```bash
-# Check signal files created
-ls instances/ACCOUNT_*/MQL5/Files/signals/
-
-# Verify EA enabled in MT5
-# Check Expert Advisors tab for errors
-
-# Test manual signal file
-echo '{"action":"BUY","symbol":"EURUSD","volume":0.01}' > instances/123456/MQL5/Files/signals/test.json
-```
-
-### Emergency Procedures
-
-**If Tunnel Goes Down:**
-1. Check cloudflared service status
-2. Restart tunnel: `cloudflared tunnel run mt5-production`
-3. Check Cloudflare status page
-4. Use backup tunnel if configured
-
-**If Flask Crashes:**
-1. Check error logs: `tail -f logs/error.log`
-2. Restart Flask server
-3. Verify all MT5 instances reconnect
-4. Test webhook functionality
-
-**Security Incident:**
-1. Immediately rotate webhook tokens
-2. Check access logs for suspicious activity
-3. Temporarily block traffic via Cloudflare
-4. Update firewall rules
-5. Notify users of any service disruption
-
-## ✅ Production Checklist
-
-Before going live, ensure:
-
-### Pre-Launch
-- [ ] Local system tested thoroughly
-- [ ] .env configured for production
-- [ ] Cloudflare tunnel configured and tested
-- [ ] DNS records propagated
-- [ ] SSL certificates active
-- [ ] Firewall rules implemented
-- [ ] Rate limiting configured
-- [ ] Email alerts working
-- [ ] Uptime monitoring setup
-- [ ] Backup procedures documented
-
-### Post-Launch  
-- [ ] Health endpoint returning 200
-- [ ] TradingView webhook integration tested
-- [ ] MT5 instances launching correctly
-- [ ] Signal processing working end-to-end
-- [ ] Email notifications received
-- [ ] Logs being generated correctly
-- [ ] Performance metrics baseline established
-
-### Ongoing Maintenance
-- [ ] Daily health checks automated
-- [ ] Weekly functionality tests scheduled  
-- [ ] Monthly security reviews planned
-- [ ] Quarterly disaster recovery tests
-- [ ] Documentation kept up-to-date
+For issues and questions:
+1. Check the troubleshooting section above
+2. Review logs via the web interface Log Viewer
+3. Verify your `.env` configuration matches the examples
+4. Ensure all required services (MT5, SMTP, Cloudflare) are properly configured
 
 ---
 
-## 🎯 Summary
-
-Your MT5 Middleware is now production-ready with:
-
-- 🌐 **Global Access** via your custom domain
-- 🔒 **Enterprise Security** through Cloudflare
-- 📊 **Professional Monitoring** and alerting
-- 🚀 **Scalable Architecture** ready for growth
-- 🛡️ **DDoS Protection** and WAF filtering
-- ⚡ **High Performance** with edge caching
-- 🔧 **Easy Maintenance** through web interface
-
-**Your system can now handle:**
-- Multiple trading accounts simultaneously
-- High-frequency signals from TradingView
-- Automated MT5 instance management
-- Real-time monitoring and alerting
-- Professional-grade security and reliability
-
-Ready to revolutionize your automated trading setup! 🚀
+**Note**: This middleware acts as a bridge between TradingView signals and MT5. Ensure your EA is properly configured to read signal files from the `MQL5/Files/signals/` directory of each instance.
