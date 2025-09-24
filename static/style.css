@@ -1,0 +1,20 @@
+body { background:#0b0f14; color:#e6edf3; font-family:system-ui, sans-serif; }
+.container { max-width:1000px; margin:32px auto; padding:0 16px; }
+h1 { font-size:28px; margin-bottom:16px; }
+.card { background:#111827; padding:16px; border-radius:14px; margin-bottom:16px; box-shadow:0 10px 20px rgba(0,0,0,0.25); }
+.form { display:grid; gap:8px; grid-template-columns:1fr 1fr auto; }
+input { background:#0f172a; color:#e6edf3; border:1px solid #1f2937; padding:10px 12px; border-radius:10px; width:100%; }
+button { background:#2563eb; color:white; border:0; padding:10px 14px; border-radius:10px; cursor:pointer; }
+button:hover { opacity:.9; }
+.row { display:grid; grid-template-columns:auto 1fr auto; gap:8px; align-items:center; }
+table { width:100%; border-collapse:collapse; }
+th, td { padding:10px; border-bottom:1px solid #1f2937; text-align:left; }
+.tip { color:#9ca3af; font-size:13px; margin-top:6px; }
+.status-dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:6px; vertical-align:middle; background:#6b7280; }
+.status-dot.alive { background:#22c55e; }
+.status-dot.dead { background:#ef4444; }
+.actions { display:flex; gap:6px; }
+button.btn-stop { background:#ef4444; }
+button.btn-restart { background:#0ea5e9; }
+button.btn-open { background:#10b981; }
+.logs { background:#0f172a; border:1px solid #1f2937; padding:12px; border-radius:10px; height:240px; overflow:auto; }

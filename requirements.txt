@@ -1,0 +1,7 @@
+Flask==3.0.3
+python-dotenv==1.0.1
+Jinja2==3.1.4
+itsdangerous==2.2.0
+click==8.1.7
+psutil==5.9.8
+MetaTrader5==5.0.45

@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>MT5 Multi-Account Middleware</title>
+  <link rel="stylesheet" href="/static/style.css"/>
+</head>
+<body>
+  <div class="container">
+    <h1>MT5 Multi-Account Middleware</h1>
+
+    <section class="card">
+      <h2>Add Account</h2>
+      <div class="form">
+        <input id="acc" placeholder="Account number"/>
+        <input id="nick" placeholder="Nickname (optional)"/>
+        <button id="btnAdd">Add</button>
+      </div>
+      <p class="tip">Creates a portable instance from your MT5 profile source and launches MT5.</p>
+    </section>
+
+    <section class="card">
+      <h2>Webhook</h2>
+      <div class="row">
+        <input id="webhookUrl" readonly/>
+        <button id="btnCopy">Copy</button>
+      </div>
+      <p class="tip">Secure with token + Cloudflare Tunnel.</p>
+    </section>
+
+    <section class="card">
+      <h2>Accounts</h2>
+      <table id="tbl">
+        <thead><tr>
+          <th>ID</th><th>Status</th><th>Account</th><th>Nickname</th><th>PID</th><th>Created</th><th>Action</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+      <p class="tip">Status refreshes every 2 seconds.</p>
+    </section>
+
+    <section class="card">
+      <h2>Log Viewer</h2>
+      <div class="row">
+        <button id="btnRefreshLog">Refresh Logs</button>
+      </div>
+      <pre id="logs" class="logs"></pre>
+    </section>
+  </div>
+  <script src="/static/app.js"></script>
+</body>
+</html>
